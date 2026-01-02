@@ -13,6 +13,7 @@ const App: React.FC = () => {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameLoopRef = useRef<number | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const gameState = useRef({
     playerX: C.GAME_WIDTH / 2 - C.PLAYER_WIDTH / 2,
@@ -20,7 +21,7 @@ const App: React.FC = () => {
     enemies: [] as T.Enemy[],
     barriers: [] as T.Barrier[],
     particles: [] as T.Particle[],
-    bgCells: [] as {x: number, y: number, r: number, s: number}[],
+    bgCells: [] as {x: number, y: number, r: number, s: number, alpha: number}[],
     enemyDirection: 1,
     enemyMoveTimer: 0,
     lastFireTime: 0,
@@ -39,12 +40,12 @@ const App: React.FC = () => {
     const state = gameState.current;
     state.enemies = [];
     
-    // Background cells decoration
-    state.bgCells = Array.from({length: 15}, () => ({
+    state.bgCells = Array.from({length: 30}, () => ({
       x: Math.random() * C.GAME_WIDTH,
       y: Math.random() * C.GAME_HEIGHT,
-      r: 20 + Math.random() * 60,
-      s: 0.2 + Math.random() * 0.5
+      r: 5 + Math.random() * 35,
+      s: 0.05 + Math.random() * 0.2,
+      alpha: 0.03 + Math.random() * 0.07
     }));
 
     for (let r = 0; r < C.ENEMY_ROWS; r++) {
@@ -66,7 +67,6 @@ const App: React.FC = () => {
     for (let i = 0; i < C.BARRIER_COUNT; i++) {
       for (let x = 0; x < C.BARRIER_WIDTH; x += C.BARRIER_BLOCK_SIZE) {
         for (let y = 0; y < C.BARRIER_HEIGHT; y += C.BARRIER_BLOCK_SIZE) {
-          // Organiczny kształt bariery (zaokrąglony)
           const dx = x - C.BARRIER_WIDTH/2;
           const dy = y - C.BARRIER_HEIGHT/2;
           if (dx*dx/(C.BARRIER_WIDTH*C.BARRIER_WIDTH/4) + dy*dy/(C.BARRIER_HEIGHT*C.BARRIER_HEIGHT/4) < 1) {
@@ -86,6 +86,22 @@ const App: React.FC = () => {
     state.particles = [];
     state.enemyDirection = 1;
     state.enemyMoveTimer = 0;
+  }, []);
+
+  const shoot = useCallback(() => {
+    const state = gameState.current;
+    if (Date.now() - state.lastFireTime > C.FIRE_COOLDOWN) {
+      state.bullets.push({
+        x: state.playerX + C.PLAYER_WIDTH / 2 - C.BULLET_WIDTH / 2,
+        y: C.GAME_HEIGHT - 65,
+        width: C.BULLET_WIDTH,
+        height: C.BULLET_HEIGHT,
+        active: true,
+        isPlayer: true
+      });
+      state.lastFireTime = Date.now();
+      audioService.playShoot();
+    }
   }, []);
 
   const startGame = () => {
@@ -128,7 +144,6 @@ const App: React.FC = () => {
     const state = gameState.current;
     state.frameCount++;
 
-    // Background animation
     state.bgCells.forEach(cell => {
       cell.y += cell.s;
       if (cell.y > C.GAME_HEIGHT + cell.r) cell.y = -cell.r;
@@ -138,18 +153,7 @@ const App: React.FC = () => {
     if (state.keys['ArrowRight']) state.playerX += C.PLAYER_SPEED;
     state.playerX = Math.max(0, Math.min(C.GAME_WIDTH - C.PLAYER_WIDTH, state.playerX));
 
-    if (state.keys[' '] && Date.now() - state.lastFireTime > C.FIRE_COOLDOWN) {
-      state.bullets.push({
-        x: state.playerX + C.PLAYER_WIDTH / 2 - C.BULLET_WIDTH / 2,
-        y: C.GAME_HEIGHT - 65,
-        width: C.BULLET_WIDTH,
-        height: C.BULLET_HEIGHT,
-        active: true,
-        isPlayer: true
-      });
-      state.lastFireTime = Date.now();
-      audioService.playShoot();
-    }
+    if (state.keys[' ']) shoot();
 
     state.bullets = state.bullets.filter(b => b.active);
     state.bullets.forEach(b => {
@@ -254,16 +258,14 @@ const App: React.FC = () => {
 
     const state = gameState.current;
     
-    // Background - Biologiczny gradient
     const bgGrad = ctx.createRadialGradient(C.GAME_WIDTH/2, C.GAME_HEIGHT/2, 50, C.GAME_WIDTH/2, C.GAME_HEIGHT/2, C.GAME_WIDTH);
     bgGrad.addColorStop(0, '#2d0a1a');
     bgGrad.addColorStop(1, '#1a050d');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, C.GAME_WIDTH, C.GAME_HEIGHT);
 
-    // Dekoracyjne komórki w tle
-    ctx.globalAlpha = 0.15;
     state.bgCells.forEach(cell => {
+      ctx.globalAlpha = cell.alpha;
       ctx.fillStyle = '#db2777';
       ctx.beginPath();
       ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
@@ -276,32 +278,27 @@ const App: React.FC = () => {
       ctx.translate((Math.random() - 0.5) * state.shakeAmount, (Math.random() - 0.5) * state.shakeAmount);
     }
 
-    // Bariery (Tkanka)
     state.barriers.forEach(b => {
       ctx.fillStyle = C.COLORS.barrier;
       ctx.beginPath();
       ctx.arc(b.x + b.width/2, b.y + b.height/2, b.width/1.5, 0, Math.PI * 2);
       ctx.fill();
-      // "Jądro" komórki bariery
       ctx.fillStyle = '#701a3d';
       ctx.beginPath();
       ctx.arc(b.x + b.width/2, b.y + b.height/2, b.width/3, 0, Math.PI * 2);
       ctx.fill();
     });
 
-    // Gracz (Sperm Rider)
     ctx.shadowBlur = 15;
     ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
     ctx.fillStyle = C.COLORS.player;
     const px = state.playerX;
     const py = C.GAME_HEIGHT - 60;
     
-    // Główka
     ctx.beginPath();
     ctx.ellipse(px + 20, py + 15, 12, 14, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Ogonek (falujący)
     ctx.beginPath();
     ctx.moveTo(px + 20, py + 27);
     for (let i = 0; i < 24; i++) {
@@ -314,29 +311,21 @@ const App: React.FC = () => {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Przeciwnicy (Jajeczka)
     const pulse = Math.sin(state.frameCount * 0.1) * 2;
     state.enemies.forEach(e => {
       if (!e.active) return;
       const colors = [C.COLORS.enemy1, C.COLORS.enemy2, C.COLORS.enemy3];
       ctx.fillStyle = colors[e.type];
-      
       const r = 16 + pulse;
       ctx.shadowBlur = 10;
       ctx.shadowColor = colors[e.type];
-      
-      // Zewnętrzna błona
       ctx.beginPath();
       ctx.arc(e.x + 15, e.y + 15, r, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Jądro
       ctx.fillStyle = 'rgba(0,0,0,0.2)';
       ctx.beginPath();
       ctx.arc(e.x + 15, e.y + 15, r/2, 0, Math.PI * 2);
       ctx.fill();
-      
-      // Blask
       ctx.fillStyle = 'rgba(255,255,255,0.3)';
       ctx.beginPath();
       ctx.arc(e.x + 10, e.y + 10, r/4, 0, Math.PI * 2);
@@ -344,13 +333,11 @@ const App: React.FC = () => {
     });
     ctx.shadowBlur = 0;
 
-    // Pociski
     state.bullets.forEach(b => {
       ctx.fillStyle = b.isPlayer ? C.COLORS.player : C.COLORS.bullet;
       ctx.beginPath();
       ctx.arc(b.x + b.width/2, b.y, b.width/2 + 2, 0, Math.PI * 2);
       ctx.fill();
-      // Ogon pocisku (płynny)
       ctx.beginPath();
       ctx.moveTo(b.x + b.width/2, b.y);
       const tailLen = b.isPlayer ? 18 : -18;
@@ -360,7 +347,6 @@ const App: React.FC = () => {
       ctx.stroke();
     });
 
-    // Cząsteczki (Mokre rozbryzgi)
     state.particles.forEach(p => {
       ctx.globalAlpha = p.life;
       ctx.fillStyle = p.color;
@@ -395,7 +381,9 @@ const App: React.FC = () => {
         if (status === 'GAMEOVER' || status === 'START') startGame();
       }
     };
-    const handleKeyUp = (e: KeyboardEvent) => gameState.current.keys[e.key] = false;
+    const handleKeyUp = (e: KeyboardEvent) => {
+      gameState.current.keys[e.key] = false;
+    };
     
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -411,113 +399,130 @@ const App: React.FC = () => {
     audioService.toggle(next);
   };
 
+  const handleContainerTouch = (e: React.PointerEvent) => {
+    if (status === 'PLAYING') {
+      const target = e.target as HTMLElement;
+      // If the target is NOT a control button, fire
+      if (!target.closest('.control-btn')) {
+        shoot();
+      }
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#0d0206] text-white font-sans overflow-hidden touch-none select-none">
-      <div className="absolute top-2 left-2 right-2 flex justify-between text-xs md:text-xl font-bold z-10 pointer-events-none">
-        <div className="bg-pink-950/40 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-sm">PUNKTY: <span className="text-pink-300 font-mono">{score.toString().padStart(6, '0')}</span></div>
+    <div 
+      ref={containerRef}
+      onPointerDown={handleContainerTouch}
+      className="flex flex-col items-center justify-center min-h-screen bg-[#0d0206] text-white font-sans overflow-hidden touch-none select-none relative"
+    >
+      {/* HUD - Always visible */}
+      <div className="absolute top-4 left-4 right-4 flex justify-between text-xs md:text-xl font-bold z-10 pointer-events-none">
+        <div className="bg-pink-950/60 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-md">PUNKTY: <span className="text-pink-300 font-mono">{score.toString().padStart(6, '0')}</span></div>
         <div className="flex gap-2">
-          <div className="bg-pink-950/40 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-sm">FALA: {level}</div>
-          <div className="bg-pink-950/40 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-sm">POTENCJAŁ: {lives}🧬</div>
+          <div className="bg-pink-950/60 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-md">FALA: {level}</div>
+          <div className="bg-pink-950/60 p-2 rounded-lg border border-pink-800 shadow-xl backdrop-blur-md">GENY: {lives}🧬</div>
         </div>
       </div>
 
-      <div className="relative border-4 md:border-8 border-pink-900 bg-black rounded-3xl shadow-[0_0_80px_rgba(219,39,119,0.3)] overflow-hidden aspect-[4/3] w-full max-w-[800px]">
+      {/* GAME CANVAS CONTAINER */}
+      <div className="relative border-b-4 md:border-8 border-pink-900 bg-black shadow-[0_0_80px_rgba(219,39,119,0.3)] overflow-hidden aspect-[3/4] md:aspect-[4/3] w-full max-w-[800px] flex items-center justify-center transition-all">
         <canvas 
           ref={canvasRef} 
           width={C.GAME_WIDTH} 
           height={C.GAME_HEIGHT}
-          className="w-full h-full"
+          className="w-full h-full object-contain pointer-events-none"
         />
 
+        {/* OVERLAYS */}
         {status === 'START' && (
-          <div className="absolute inset-0 bg-pink-950/90 flex flex-col items-center justify-center text-center p-4 backdrop-blur-md">
-            <h1 className="text-6xl md:text-9xl font-black mb-2 text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.5)] tracking-tighter italic animate-bounce">SPERMERSI.PL</h1>
-            <p className="text-xl md:text-3xl mb-8 text-pink-300 font-bold uppercase tracking-[0.3em] opacity-80">WYŚCIG ŻYCIA: EXTREME</p>
-            <div className="space-y-3 text-sm md:text-lg bg-black/40 p-6 rounded-2xl border border-pink-500/30 mb-8 backdrop-blur-xl">
-              <p className="font-black text-pink-200 uppercase tracking-widest">KONTROLA BIOLOGICZNA</p>
-              <p>⬅️ ➡️ Ruch | ⌨️ SPACJA Wytrysk Energii</p>
-              <p className="text-xs text-pink-400 italic">ZAPŁODNIJ JAK NAJWIĘCEJ JAJECZEK!</p>
+          <div className="absolute inset-0 bg-pink-950/90 flex flex-col items-center justify-center text-center p-4 backdrop-blur-md z-20">
+            <h1 className="text-6xl md:text-9xl font-black mb-2 text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.5)] tracking-tighter italic animate-pulse">SPERMERSI.PL</h1>
+            <p className="text-lg md:text-2xl mb-8 text-pink-300 font-bold uppercase tracking-[0.3em] opacity-80">BIOLOGICZNA INWAZJA</p>
+            <div className="space-y-3 text-xs md:text-lg bg-black/40 p-6 rounded-2xl border border-pink-500/30 mb-8 backdrop-blur-xl">
+              <p className="font-black text-pink-200 uppercase tracking-widest">INSTRUKCJA MOBILNA</p>
+              <p>Przyciski po bokach: Ruch | Kliknij w środek: Strzał</p>
             </div>
             <button 
-              onClick={startGame}
-              className="bg-white text-pink-900 px-16 py-6 rounded-full font-black text-3xl md:text-5xl hover:bg-pink-100 hover:scale-110 transition-all transform active:scale-95 shadow-[0_0_50px_rgba(255,255,255,0.4)]"
+              onClick={(e) => { e.stopPropagation(); startGame(); }}
+              className="bg-white text-pink-900 px-12 py-5 rounded-full font-black text-3xl md:text-5xl hover:bg-pink-100 hover:scale-110 transition-all transform active:scale-95 shadow-[0_0_50_rgba(255,255,255,0.4)]"
             >
-              WBIJAJ!
+              START
             </button>
           </div>
         )}
 
         {status === 'PAUSED' && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm">
-            <h2 className="text-7xl font-black text-pink-400 mb-8 drop-shadow-lg italic">ZATRZYMANIE</h2>
-            <button onClick={() => setStatus('PLAYING')} className="bg-white text-black px-12 py-5 rounded-full font-black text-3xl active:scale-90 transition-all">WZNÓW CYKL</button>
+          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm z-20">
+            <h2 className="text-6xl font-black text-pink-400 mb-8 drop-shadow-lg italic uppercase">PAUZA</h2>
+            <button onClick={(e) => { e.stopPropagation(); setStatus('PLAYING'); }} className="bg-white text-black px-12 py-5 rounded-full font-black text-3xl active:scale-90 transition-all">WZNÓW</button>
           </div>
         )}
 
         {status === 'GAMEOVER' && (
-          <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center text-center p-8 animate-in fade-in zoom-in duration-300">
-            <h2 className="text-6xl md:text-9xl font-black mb-4 text-white italic">WYPŁUKANY</h2>
-            <p className="text-3xl mb-12 text-pink-300 font-mono tracking-[0.5em]">PUNKTY: {score}</p>
+          <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center text-center p-8 z-20">
+            <h2 className="text-6xl md:text-9xl font-black mb-4 text-white italic">WYPŁUKANY!</h2>
+            <p className="text-2xl mb-12 text-pink-300 font-mono tracking-[0.5em]">WYNIK: {score}</p>
             <button 
-              onClick={startGame}
-              className="bg-white text-red-950 px-14 py-6 rounded-full font-black text-3xl active:scale-90 transition-transform shadow-2xl"
+              onClick={(e) => { e.stopPropagation(); startGame(); }}
+              className="bg-white text-red-950 px-14 py-6 rounded-full font-black text-3xl active:scale-90 shadow-2xl"
             >
-              NOWY MIOT
+              PONÓW
             </button>
           </div>
         )}
 
         {status === 'LEVEL_COMPLETE' && (
-          <div className="absolute inset-0 bg-pink-900/95 flex flex-col items-center justify-center text-center p-8">
+          <div className="absolute inset-0 bg-pink-900/95 flex flex-col items-center justify-center text-center p-8 z-20">
             <h2 className="text-6xl md:text-9xl font-black mb-4 text-white italic drop-shadow-2xl animate-pulse">ZAPŁODNIONE!</h2>
             <p className="text-2xl mb-12 text-pink-200 font-bold">FALA {level} OPANOWANA</p>
             <button 
-              onClick={nextLevel}
+              onClick={(e) => { e.stopPropagation(); nextLevel(); }}
               className="bg-white text-pink-950 px-16 py-7 rounded-full font-black text-4xl active:scale-90 shadow-2xl transition-all"
             >
               GŁĘBIEJ!
             </button>
           </div>
         )}
+      </div>
 
-        {/* Sterowanie Mobilne */}
-        <div className="absolute bottom-8 left-8 right-8 flex justify-between lg:hidden pointer-events-none">
-          <div className="flex gap-6 pointer-events-auto">
+      {/* MOBILE CONTROLS - EXTREME SIDES FOR THUMBS */}
+      {status === 'PLAYING' && (
+        <>
+          <div className="absolute left-4 bottom-1/4 z-30 lg:hidden control-btn">
             <button 
-              className="w-24 h-24 bg-pink-900/40 backdrop-blur-2xl border-2 border-pink-500 rounded-full flex items-center justify-center text-5xl active:bg-pink-600 active:scale-125 transition-all shadow-lg select-none"
+              className="w-24 h-40 bg-pink-900/20 backdrop-blur-sm border-2 border-pink-500/30 rounded-full flex items-center justify-center text-6xl active:bg-pink-600/50 active:scale-110 transition-all select-none"
               style={{ touchAction: 'none' }}
-              onPointerDown={(e) => { e.preventDefault(); gameState.current.keys['ArrowLeft'] = true; vibrate(20); }}
-              onPointerUp={(e) => { e.preventDefault(); gameState.current.keys['ArrowLeft'] = false; }}
-              onPointerLeave={(e) => { e.preventDefault(); gameState.current.keys['ArrowLeft'] = false; }}
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowLeft'] = true; vibrate(15); }}
+              onPointerUp={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowLeft'] = false; }}
+              onPointerLeave={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowLeft'] = false; }}
             >⬅️</button>
+          </div>
+          <div className="absolute right-4 bottom-1/4 z-30 lg:hidden control-btn">
             <button 
-              className="w-24 h-24 bg-pink-900/40 backdrop-blur-2xl border-2 border-pink-500 rounded-full flex items-center justify-center text-5xl active:bg-pink-600 active:scale-125 transition-all shadow-lg select-none"
+              className="w-24 h-40 bg-pink-900/20 backdrop-blur-sm border-2 border-pink-500/30 rounded-full flex items-center justify-center text-6xl active:bg-pink-600/50 active:scale-110 transition-all select-none"
               style={{ touchAction: 'none' }}
-              onPointerDown={(e) => { e.preventDefault(); gameState.current.keys['ArrowRight'] = true; vibrate(20); }}
-              onPointerUp={(e) => { e.preventDefault(); gameState.current.keys['ArrowRight'] = false; }}
-              onPointerLeave={(e) => { e.preventDefault(); gameState.current.keys['ArrowRight'] = false; }}
+              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowRight'] = true; vibrate(15); }}
+              onPointerUp={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowRight'] = false; }}
+              onPointerLeave={(e) => { e.preventDefault(); e.stopPropagation(); gameState.current.keys['ArrowRight'] = false; }}
             >➡️</button>
           </div>
-          <button 
-            className="w-28 h-28 bg-white/20 backdrop-blur-3xl border-4 border-white/50 rounded-full flex items-center justify-center text-7xl pointer-events-auto active:bg-white active:scale-150 transition-all shadow-[0_0_40px_rgba(255,255,255,0.4)] select-none"
-            style={{ touchAction: 'none' }}
-            onPointerDown={(e) => { e.preventDefault(); gameState.current.keys[' '] = true; }}
-            onPointerUp={(e) => { e.preventDefault(); gameState.current.keys[' '] = false; }}
-            onPointerLeave={(e) => { e.preventDefault(); gameState.current.keys[' '] = false; }}
-          >💦</button>
-        </div>
-      </div>
+        </>
+      )}
 
-      <div className="mt-8 flex gap-8 text-pink-700 font-black tracking-[0.3em] uppercase text-xs md:text-sm">
-        <button onClick={toggleSound} className="hover:text-pink-400 active:text-white transition-colors">
-          {soundEnabled ? '🔊 ORGAZM AKUSTYCZNY' : '🔇 CISZA NOCNA'}
+      {/* FOOTER & AUX CONTROLS */}
+      <div className="mt-4 flex flex-wrap justify-center gap-6 text-pink-700 font-black tracking-[0.2em] uppercase text-[10px] md:text-sm px-4 text-center z-10">
+        <button onClick={(e) => { e.stopPropagation(); toggleSound(); }} className="hover:text-pink-400 active:text-white transition-colors">
+          {soundEnabled ? '🔊 DŹWIĘK WŁ.' : '🔇 DŹWIĘK WYŁ.'}
         </button>
-        <span>|</span>
-        <button onClick={() => setStatus('START')} className="hover:text-white active:text-white transition-colors">MENU GŁÓWNE</button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setStatus(prev => prev === 'PLAYING' ? 'PAUSED' : prev === 'PAUSED' ? 'PLAYING' : prev); }}
+          className="hover:text-white active:text-white transition-colors"
+        >PAUZA (P)</button>
+        <button onClick={(e) => { e.stopPropagation(); setStatus('START'); }} className="hover:text-white active:text-white transition-colors">MENU</button>
       </div>
 
-      <footer className="mt-auto py-6 text-[10px] md:text-[12px] text-pink-900 uppercase tracking-[0.5em] font-black">
-        &copy; 2024 SPERMERSI.PL - ELITARNY KLUB ZAPŁODNIENIA
+      <footer className="mt-auto py-2 text-[9px] md:text-[11px] text-pink-950 uppercase tracking-[0.4em] font-black text-center px-4">
+        &copy; 2024 SPERMERSI.PL - BIOLOGICZNY TRIUMF
       </footer>
     </div>
   );
