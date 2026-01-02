@@ -1,0 +1,5 @@
+{
+  "name": "Sperm Rider - Space Invaders Clone",
+  "description": "A lightweight, retro-inspired Space Invaders clone with a playful 'Sperm Rider' theme, built for the web with React and Canvas 2D.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,14 @@
+
+JAK WRZUCIĆ NA HOSTING:
+
+1. Projekt został stworzony przy użyciu React i Tailwind CSS w standardzie SPA.
+2. Aby uruchomić go na "tanim hostingu statycznym", wystarczy zbudować projekt (build) i skopiować zawartość folderu wynikowego na serwer FTP/hosting.
+3. W tym środowisku generowania (AI), aplikacja jest dostępna jako zestaw plików. Na standardowym hostingu wystarczyłby plik `index.html`, o ile zawierałby on cały kod (inline).
+4. Jeśli chcesz mieć DOKŁADNIE jeden plik: skopiuj logikę z App.tsx, style Tailwind (CDN jest w index.html) i umieść je w tagach <script> oraz <style> wewnątrz index.html.
+
+Instrukcja dla wersji "Ready-to-Go":
+1. Skopiuj `index.html`.
+2. Dołącz wygenerowany plik JS (App.tsx + index.tsx skompilowane).
+3. Wrzuć na serwer. Gotowe!
+
+Aplikacja nie wymaga bazy danych ani serwera Node.js po stronie hostingu.
